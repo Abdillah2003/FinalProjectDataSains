@@ -1,0 +1,175 @@
+---
+title: "Test Project"
+author: ""
+date: "2022-11-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##input Library
+```{r}
+library(shiny)
+library(dplyr)
+library(plotly)
+library(vroom)
+library(here)
+
+```
+
+##import dataset
+```{r}
+# dataku = read.csv("Indonesian Salary by Region (1997-2022).csv")
+dataku = vroom(here("Indonesian Salary by Region (1997-2022).csv"))
+option_provinsi = dataku%>%filter(YEAR=="2021")%>%select(REGION)
+```
+
+
+##pembuatan function yang berisi pembuatan model menggunakan regressi linear dan akan mengembalikan nilai prediksi yang nanti akan ditampilkan didalam GUI
+##kami menggunakan function pemodelan linear regression yaitu lm()
+```{r}
+hitung = function(pilihan, input){
+  ###data preparation
+  salary = dataku%>%filter(REGION == pilihan)
+  ###pembuatan model menggunakan regresi linear
+  RegressilinearGaji= lm(SALARY~YEAR, salary)
+  ###data testing berdasarkan input user
+  newdata = data.frame(YEAR = input)
+  ##prediksi menggunakan fungsi predict() dan model yang telah dibuat
+  x = predict(RegressilinearGaji,newdata)
+  x = as.integer(x)
+  return(x)
+}
+```
+
+## fungsi untuk print rsquare(untuk melihat seberapa bagus model yang telah dibuat)
+```{r}
+rsquare = function(pilihan){
+  salary = dataku%>%filter(REGION == pilihan)
+  Regressilinear= lm(SALARY~YEAR, salary)
+  return(summary(Regressilinear)) 
+}
+```
+
+##fungsi untuk menampilkan qqplot yang nanti akan ditampilkan di UI
+```{r}
+plottt = function(region){
+  salary = dataku%>%filter(REGION == region)
+  Regressilinear= lm(SALARY~YEAR, salary)
+  return(Regressilinear)
+}
+
+```
+
+
+
+
+##Pembuatan UI dengan Library Shiny
+```{r ui}
+ui <- fluidPage(
+title = "--------------------------------",
+headerPanel("Prediksi UMR Setiap Provinsi Berdasarkan Tahun"),
+tags$style(
+  "#keluar{
+  background-color: #dc4b25;
+  justify-content: center;
+  display: flex;
+  margin-top: 30px;
+  }"
+),
+sidebarLayout(
+  sidebarPanel(
+    selectInput(inputId = "provinsi",
+                label = "Provinsi",
+                choices = option_provinsi,
+                multiple = FALSE,
+                selected = option_provinsi[1]),
+   "                                                                     ",
+   numericInput("tahun","Input Tahun", value = 2023, min = 2023),
+   "                                                                    ",
+   
+   actionButton("tombol", "Predict"),
+   textOutput("keluar", container = pre)
+   
+  ),
+  mainPanel(
+    tabsetPanel(
+      type = "tabs",
+      tabPanel("bagan",plotlyOutput(outputId = "aq_plot")),
+      tabPanel("summary", textOutput("summary")),
+      tabPanel("qqplot",plotOutput(outputId = "qqplot")),
+      
+    )
+    
+  )
+)
+)
+
+server <- function(input, output) {
+  ##output bagan
+  aq_plot <- eventReactive(input$tombol,{
+    dataku %>%
+      filter(REGION %in% input$provinsi) %>%
+      ggplot(aes_string(x = "YEAR", y = "SALARY")) +
+      geom_point()+
+      theme(axis.ticks.y = element_blank(),
+            axis.text.y = element_blank(),
+            axis.ticks.x = element_blank())+
+      labs(
+        x = "",
+        title = paste("Grafik UMR",input$provinsi,  "dari tahun ke tahun", sep = " ")
+      )
+  })
+  
+  ##output qqplot
+  qqplot <- eventReactive(input$tombol,{
+    plot(plottt(input$provinsi), which=c(2))
+  })
+    
+    ##output prediksi
+    out <- eventReactive(input$tombol, {
+    
+    if (is.null(input$tahun)||input$tahun <=2022) {
+      paste("Input anda kurang dari tahun < 2022")
+    }else{
+      df = hitung(input$provinsi, input$tahun)
+      paste("Hasil Prediksi UMR di ",input$provinsi ," ditahun ",input$tahun," adalah Rp.",df, sep = "")
+    }
+  })
+    
+    ##output Rsquare
+    outsummary <- eventReactive(input$tombol, {
+    if (is.null(input$tahun)||input$tahun <=2022) {
+      paste("Input anda kurang dari tahun < 2022")
+    }else{
+      paste("R Square yang didapatkan adalah sebagai berikut :",rsquare(input$provinsi)["r.squared"], sep = " ")
+    }
+  })
+    
+  ##output prediksi
+  output$keluar = renderText({out()})
+  ##output bagan
+  output$aq_plot <- renderPlotly({
+    ggplotly(aq_plot())
+  })
+  ##output Rsquare
+  output$summary = renderText(({outsummary()}))
+  ##output qqplot
+  output$qqplot = renderPlot({qqplot()})
+  
+}
+
+shinyApp(ui, server)
+```
+
+
+
+
+
+
+
+
+
+
